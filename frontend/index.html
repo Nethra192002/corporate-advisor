@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corporate Finance Autopilot</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .hero {
+      text-align: center;
+      padding: 72px 0 48px;
+    }
+    .hero-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: 36px; font-weight: 700; line-height: 1.2;
+      margin-bottom: 12px; letter-spacing: -0.02em;
+    }
+    .hero p {
+      font-size: 15px; color: var(--muted);
+      max-width: 480px; margin: 0 auto 40px;
+    }
+    .company-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px; margin-bottom: 32px;
+    }
+    .company-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 16px; cursor: pointer;
+      text-align: center; transition: all .15s;
+      position: relative;
+    }
+    .company-card:hover  { border-color: #aaa; transform: translateY(-1px); }
+    .company-card.selected {
+      border-color: var(--accent); border-width: 2px;
+      background: var(--bg);
+    }
+    .company-card.selected::after {
+      content: "✓";
+      position: absolute; top: 8px; right: 10px;
+      font-size: 11px; font-weight: 700;
+    }
+    .co-ticker {
+      font-size: 20px; font-weight: 700;
+      margin-bottom: 4px; letter-spacing: -0.01em;
+    }
+    .co-name   { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+    .co-desc   { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .co-tag    {
+      display: inline-block; font-size: 10px;
+      padding: 2px 6px; border-radius: 99px;
+      margin: 2px 1px;
+    }
+    .analyse-row {
+      display: flex; justify-content: center;
+      align-items: center; gap: 16px; margin-bottom: 48px;
+    }
+    .selected-label { font-size: 13px; color: var(--muted); }
+    #analyseBtn { padding: 12px 32px; font-size: 14px; }
+    .pipeline-info {
+      max-width: 640px; margin: 0 auto 48px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    }
+    .pipeline-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px; text-align: center;
+    }
+    .pipeline-item-icon { font-size: 20px; margin-bottom: 6px; }
+    .pipeline-item-label { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .pipeline-item-sub   { font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container inner">
+    <a class="nav-brand" href="/">Corporate Finance Autopilot</a>
+    <div style="display:flex;align-items:center;gap:12px">
+      <a class="btn" href="compare.html" style="font-size:12px;padding:6px 14px">Compare companies</a>
+      <span class="nav-sub">yfinance · Wikipedia API · Groq LLM</span>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="hero">
+    <div class="hero-label">Student Hackathon Demo</div>
+    <h1>Pick a company.<br>Get an AI financial brief.</h1>
+    <p>A pipeline-driven system that fetches real data, builds a financial model, simulates funding options, and delivers structured AI advisory.</p>
+  </div>
+
+  <div class="company-grid" id="companyGrid"></div>
+
+  <div class="analyse-row">
+    <span class="selected-label" id="selectedLabel">Select a company above</span>
+    <button class="btn btn-primary" id="analyseBtn" disabled onclick="runAnalysis()">
+      Run Analysis →
+    </button>
+  </div>
+
+  <div class="pipeline-info">
+    <div class="pipeline-item">
+      <div class="pipeline-item-icon">⛁</div>
+      <div class="pipeline-item-label">Real data</div>
+      <div class="pipeline-item-sub">yfinance + Wikipedia API</div>
+    </div>
+    <div class="pipeline-item">
+      <div class="pipeline-item-icon">◈</div>
+      <div class="pipeline-item-label">Financial model</div>
+      <div class="pipeline-item-sub">Base · Upside · Downside</div>
+    </div>
+    <div class="pipeline-item">
+      <div class="pipeline-item-icon">✦</div>
+      <div class="pipeline-item-label">AI advisor</div>
+      <div class="pipeline-item-sub">4-step Groq reasoning</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COMPANIES_META = {
+  AAPL: { tags: ["High margin","Buyback story","Mature"],       colors: ["badge-green","badge-blue","badge-gray"] },
+  TSLA: { tags: ["High growth","Volatile","Capex heavy"],       colors: ["badge-blue","badge-red","badge-amber"] },
+  NVDA: { tags: ["Explosive growth","AI boom","High margin"],   colors: ["badge-green","badge-blue","badge-green"] },
+  SPOT: { tags: ["Thin margins","Subscriber growth","Risky"],   colors: ["badge-amber","badge-blue","badge-red"] },
+  MSFT: { tags: ["Recurring revenue","Cloud","Stable"],         colors: ["badge-green","badge-blue","badge-green"] },
+};
+
+let selected = null;
+
+async function loadCompanies() {
+  const res  = await fetch("/companies");
+  const data = await res.json();
+  const grid = document.getElementById("companyGrid");
+
+  data.companies.forEach(co => {
+    const meta = COMPANIES_META[co.ticker] || { tags: [], colors: [] };
+    const tags = meta.tags.map((t, i) =>
+      `<span class="co-tag ${meta.colors[i] || 'badge-gray'}">${t}</span>`
+    ).join("");
+
+    const card = document.createElement("div");
+    card.className = "company-card";
+    card.dataset.ticker = co.ticker;
+    card.innerHTML = `
+      <div class="co-ticker">${co.ticker}</div>
+      <div class="co-name">${co.name}</div>
+      <div style="margin-bottom:8px">${tags}</div>
+    `;
+    card.onclick = () => selectCompany(co.ticker, co.name, card);
+    grid.appendChild(card);
+  });
+}
+
+function selectCompany(ticker, name, card) {
+  document.querySelectorAll(".company-card").forEach(c => c.classList.remove("selected"));
+  card.classList.add("selected");
+  selected = ticker;
+  document.getElementById("selectedLabel").textContent = `Selected: ${name}`;
+  document.getElementById("analyseBtn").disabled = false;
+}
+
+function runAnalysis() {
+  if (!selected) return;
+  window.location.href = `dashboard.html?ticker=${selected}`;
+}
+
+loadCompanies();
+</script>
+</body>
+</html>

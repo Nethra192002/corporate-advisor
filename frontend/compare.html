@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compare Companies</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    .page-header { padding: 28px 0 20px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .page-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+    .page-header p  { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .section { margin-bottom: 20px; }
+
+    /* ── Picker ── */
+    .picker-wrap {
+      display: flex; align-items: center; gap: 16px;
+      flex-wrap: wrap; margin-bottom: 32px;
+    }
+    .picker-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 180px; }
+    .picker-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+    .picker-select {
+      padding: 9px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--surface);
+      font-size: 14px; color: var(--text); cursor: pointer; outline: none;
+    }
+    .picker-select:focus { border-color: var(--accent); }
+    .vs-badge {
+      font-size: 13px; font-weight: 700; color: var(--muted);
+      padding: 0 8px; margin-top: 20px;
+    }
+
+    /* ── Loading ── */
+    .loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(248,248,246,0.97);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 200;
+    }
+    .loading-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .loading-sub   { font-size: 13px; color: var(--muted); }
+    .spin {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .8s linear infinite; margin-bottom: 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Comparison grid ── */
+    .compare-header {
+      display: grid; grid-template-columns: 200px 1fr 1fr; gap: 1px;
+      background: var(--border); border-radius: var(--radius) var(--radius) 0 0;
+      overflow: hidden; margin-bottom: 1px;
+    }
+    .compare-header-cell {
+      background: var(--surface); padding: 16px 20px;
+      font-weight: 600; font-size: 15px;
+    }
+    .compare-header-cell.label { background: var(--bg); font-size: 12px; font-weight: 500; color: var(--muted); }
+    .compare-header-cell.co1   { border-top: 3px solid var(--blue); }
+    .compare-header-cell.co2   { border-top: 3px solid var(--green); }
+
+    .compare-row {
+      display: grid; grid-template-columns: 200px 1fr 1fr; gap: 1px;
+      background: var(--border); margin-bottom: 1px;
+    }
+    .compare-row:last-child { border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; }
+    .compare-cell {
+      background: var(--surface); padding: 12px 20px;
+      font-size: 13px;
+    }
+    .compare-cell.row-label {
+      background: var(--bg); font-size: 12px;
+      color: var(--muted); font-weight: 500;
+      display: flex; align-items: center;
+    }
+    .compare-cell.winner { background: #f0fdf4; font-weight: 600; }
+    .compare-cell.loser  { background: var(--surface); color: var(--muted); }
+    .compare-val { font-size: 15px; font-weight: 600; }
+    .compare-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Health bar comparison ── */
+    .mini-bar-wrap { display: flex; align-items: center; gap: 8px; }
+    .mini-bar-track { flex: 1; background: var(--bg); border-radius: 99px; height: 6px; }
+    .mini-bar-fill  { height: 6px; border-radius: 99px; }
+
+    /* ── Recommendation comparison ── */
+    .rec-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .rec-card {
+      border-radius: var(--radius); padding: 16px 20px;
+      border: 2px solid var(--border);
+    }
+    .rec-card.blue-border  { border-color: var(--blue); }
+    .rec-card.green-border { border-color: var(--green); }
+    .rec-ticker { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .rec-option { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+    .rec-text   { font-size: 12px; line-height: 1.65; color: var(--muted); }
+
+    /* ── Chart ── */
+    canvas { max-height: 280px; }
+  </style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none">
+  <div class="spin"></div>
+  <div class="loading-title" id="loadingTitle">Running comparison...</div>
+  <div class="loading-sub">Fetching real data and running AI advisor for both companies</div>
+</div>
+
+<nav>
+  <div class="container inner">
+    <a class="nav-brand" href="index.html">← Corporate Finance Autopilot</a>
+    <span class="nav-sub">Company comparison</span>
+  </div>
+</nav>
+
+<div class="container" style="padding-bottom:48px">
+
+  <div class="page-header">
+    <h1>Compare companies</h1>
+    <p>Select two companies to compare their financial health, projections, and AI funding recommendations side by side.</p>
+  </div>
+
+  <!-- Picker -->
+  <div class="picker-wrap">
+    <div class="picker-group">
+      <div class="picker-label">Company A</div>
+      <select class="picker-select" id="pick1">
+        <option value="AAPL">AAPL — Apple Inc.</option>
+        <option value="TSLA">TSLA — Tesla Inc.</option>
+        <option value="NVDA">NVDA — Nvidia Corporation</option>
+        <option value="SPOT">SPOT — Spotify Technology</option>
+        <option value="MSFT">MSFT — Microsoft Corporation</option>
+      </select>
+    </div>
+    <div class="vs-badge">VS</div>
+    <div class="picker-group">
+      <div class="picker-label">Company B</div>
+      <select class="picker-select" id="pick2">
+        <option value="AAPL">AAPL — Apple Inc.</option>
+        <option value="TSLA" selected>TSLA — Tesla Inc.</option>
+        <option value="NVDA">NVDA — Nvidia Corporation</option>
+        <option value="SPOT">SPOT — Spotify Technology</option>
+        <option value="MSFT">MSFT — Microsoft Corporation</option>
+      </select>
+    </div>
+    <div style="margin-top:20px">
+      <button class="btn btn-primary" onclick="runComparison()">Compare →</button>
+    </div>
+  </div>
+
+  <!-- Results (hidden until loaded) -->
+  <div id="compareResults" style="display:none">
+
+    <!-- Metrics table -->
+    <div class="section">
+      <div class="card-title" style="margin-bottom:12px">Key metrics</div>
+      <div id="metricsTable"></div>
+    </div>
+
+    <!-- Health scores chart -->
+    <div class="section card mt-16">
+      <div class="card-title">Health score comparison</div>
+      <canvas id="chartHealth"></canvas>
+    </div>
+
+    <!-- Revenue projection chart -->
+    <div class="section card mt-16">
+      <div class="card-title">Revenue projection — base case</div>
+      <canvas id="chartRevenue"></canvas>
+    </div>
+
+    <!-- AI recommendations -->
+    <div class="section mt-16">
+      <div class="card-title" style="margin-bottom:12px">AI funding recommendations</div>
+      <div class="rec-compare" id="recCompare"></div>
+    </div>
+
+    <!-- AI head-to-head summary -->
+    <div class="section card mt-16">
+      <div class="card-title">AI head-to-head analysis</div>
+      <div id="headToHead" style="font-size:13px;line-height:1.7;color:var(--text)"></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        Educational purposes only. Not investment advice.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let healthChart = null;
+let revenueChart = null;
+
+function fmt(n) {
+  if (!n && n !== 0) return "N/A";
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `$${(n/1e12).toFixed(1)}T`;
+  if (abs >= 1e9)  return `$${(n/1e9).toFixed(1)}B`;
+  if (abs >= 1e6)  return `$${(n/1e6).toFixed(1)}M`;
+  return `$${n.toLocaleString()}`;
+}
+function pct(n) { return n != null ? `${(n*100).toFixed(1)}%` : "N/A"; }
+function healthColor(s) {
+  if (s >= 75) return "#16a34a";
+  if (s >= 50) return "#d97706";
+  return "#dc2626";
+}
+
+async function runComparison() {
+  const t1 = document.getElementById("pick1").value;
+  const t2 = document.getElementById("pick2").value;
+
+  if (t1 === t2) {
+    alert("Please select two different companies.");
+    return;
+  }
+
+  // Show loading
+  document.getElementById("compareResults").style.display = "none";
+  document.getElementById("loadingOverlay").style.display = "flex";
+  document.getElementById("loadingTitle").textContent = `Comparing ${t1} vs ${t2}...`;
+
+  try {
+    const res  = await fetch(`/compare/${t1}/${t2}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    document.getElementById("loadingOverlay").style.display = "none";
+    document.getElementById("compareResults").style.display = "block";
+
+    renderComparison(data.company1, data.company2);
+  } catch (err) {
+    document.getElementById("loadingOverlay").style.display = "none";
+    alert(`Error: ${err.message}`);
+  }
+}
+
+function renderComparison(c1, c2) {
+  const p1 = c1.profile, p2 = c2.profile;
+  const s1 = c1.simulation, s2 = c2.simulation;
+  const a1 = c1.advice, a2 = c2.advice;
+
+  // ── Metrics table ──
+  const rows = [
+    { label: "Market cap",    v1: fmt(p1.market_cap),    v2: fmt(p2.market_cap),    bigger: "market_cap" },
+    { label: "Revenue (TTM)", v1: fmt(p1.revenue[p1.revenue.length-1]), v2: fmt(p2.revenue[p2.revenue.length-1]), bigger: "rev" },
+    { label: "Net margin",    v1: pct(p1.profit_margin), v2: pct(p2.profit_margin), cmp: p1.profit_margin > p2.profit_margin },
+    { label: "Avg rev growth",v1: pct(p1.avg_rev_growth),v2: pct(p2.avg_rev_growth),cmp: p1.avg_rev_growth > p2.avg_rev_growth },
+    { label: "Health score",  v1: `${p1.health.overall}/100`, v2: `${p2.health.overall}/100`, cmp: p1.health.overall > p2.health.overall },
+    { label: "Cash",          v1: fmt(p1.cash),          v2: fmt(p2.cash),          cmp: p1.cash > p2.cash },
+    { label: "Total debt",    v1: fmt(p1.debt),          v2: fmt(p2.debt),          cmp: p1.debt < p2.debt },
+    { label: "Beta",          v1: p1.beta?.toFixed(2) || "N/A", v2: p2.beta?.toFixed(2) || "N/A", cmp: (p1.beta||99) < (p2.beta||99) },
+    { label: "Risk flags",    v1: p1.risk_flags.join(", ") || "None", v2: p2.risk_flags.join(", ") || "None", cmp: p1.risk_flags.length <= p2.risk_flags.length },
+    { label: "Recommended",   v1: s1.recommended.toUpperCase(), v2: s2.recommended.toUpperCase(), neutral: true },
+  ];
+
+  document.getElementById("metricsTable").innerHTML = `
+    <div class="compare-header">
+      <div class="compare-header-cell label">Metric</div>
+      <div class="compare-header-cell co1">${c1.ticker} — ${c1.name}</div>
+      <div class="compare-header-cell co2">${c2.ticker} — ${c2.name}</div>
+    </div>
+    ${rows.map(r => {
+      const w1 = r.neutral ? false : (r.cmp === true);
+      const w2 = r.neutral ? false : (r.cmp === false);
+      return `
+        <div class="compare-row">
+          <div class="compare-cell row-label">${r.label}</div>
+          <div class="compare-cell ${w1 ? "winner" : w2 ? "loser" : ""}">${r.v1}</div>
+          <div class="compare-cell ${w2 ? "winner" : w1 ? "loser" : ""}">${r.v2}</div>
+        </div>
+      `;
+    }).join("")}
+  `;
+
+  // ── Health scores radar-style bar chart ──
+  const hKeys = ["overall","profitability","growth","stability","leverage"];
+  const hLabels = ["Overall","Profitability","Growth","Stability","Leverage"];
+
+  if (healthChart) { healthChart.destroy(); healthChart = null; }
+  healthChart = new Chart(document.getElementById("chartHealth"), {
+    type: "bar",
+    data: {
+      labels: hLabels,
+      datasets: [
+        {
+          label: c1.ticker,
+          data: hKeys.map(k => p1.health[k]),
+          backgroundColor: "#2563eb88",
+          borderColor: "#2563eb",
+          borderWidth: 1.5, borderRadius: 4,
+        },
+        {
+          label: c2.ticker,
+          data: hKeys.map(k => p2.health[k]),
+          backgroundColor: "#16a34a88",
+          borderColor: "#16a34a",
+          borderWidth: 1.5, borderRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      layout: { padding: 10 },
+      plugins: {
+        legend: { position: "top", labels: { font: { size: 12 }, boxWidth: 14 } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}/100` } }
+      },
+      scales: {
+        x: { grid: { color: "#e5e4e0" }, ticks: { font: { size: 11 } } },
+        y: { min: 0, max: 100, grid: { color: "#e5e4e0" }, ticks: { font: { size: 11 }, callback: v => `${v}` } }
+      }
+    }
+  });
+
+  // ── Revenue projection chart ──
+  const years1 = c1.model.projection_years;
+  const years2 = c2.model.projection_years;
+  const allYears = [...new Set([...years1, ...years2])].sort();
+
+  if (revenueChart) { revenueChart.destroy(); revenueChart = null; }
+  revenueChart = new Chart(document.getElementById("chartRevenue"), {
+    type: "line",
+    data: {
+      labels: allYears,
+      datasets: [
+        {
+          label: `${c1.ticker} base`,
+          data: c1.model.scenarios.base.revenue,
+          borderColor: "#2563eb", backgroundColor: "#2563eb18",
+          borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true,
+        },
+        {
+          label: `${c2.ticker} base`,
+          data: c2.model.scenarios.base.revenue,
+          borderColor: "#16a34a", backgroundColor: "#16a34a18",
+          borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      layout: { padding: 10 },
+      plugins: {
+        legend: { position: "top", labels: { font: { size: 12 }, boxWidth: 14 } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: $${(ctx.raw/1e9).toFixed(1)}B` } }
+      },
+      scales: {
+        x: { grid: { color: "#e5e4e0" }, ticks: { font: { size: 11 } } },
+        y: { grid: { color: "#e5e4e0" }, ticks: { font: { size: 11 }, callback: v => `$${(v/1e9).toFixed(0)}B` } }
+      }
+    }
+  });
+
+  // ── AI recommendations ──
+  const getFirstSentence = text => {
+    const match = text.match(/RECOMMENDATION:(.*?)(?=RATIONALE:|$)/s);
+    const raw   = (match ? match[1] : text).trim();
+    return raw.split(".")[0] + ".";
+  };
+
+  document.getElementById("recCompare").innerHTML = [
+    { co: c1, border: "blue-border",  scoreColor: "#2563eb" },
+    { co: c2, border: "green-border", scoreColor: "#16a34a" },
+  ].map(({ co, border, scoreColor }) => {
+    const sim   = co.simulation;
+    const adv   = co.advice;
+    const steps = adv.steps;
+    const rec   = sim.recommended;
+    const score = sim.scores[rec];
+    const conf  = adv.confidence || "medium";
+    return `
+      <div class="rec-card ${border}">
+        <div class="rec-ticker" style="color:${scoreColor}">${co.ticker}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${co.name}</div>
+        <div class="rec-option">${sim.options[rec].label} — ${score}/100</div>
+        <div class="rec-text">${getFirstSentence(steps.final_recommendation || "")}</div>
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="badge badge-${conf.includes("high") ? "green" : conf.includes("medium") ? "blue" : "amber"}">${conf} confidence</span>
+          ${(co.profile.risk_flags || []).map(f => `<span class="badge badge-amber">${f}</span>`).join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // ── AI head-to-head ──
+  const h2h = buildHeadToHead(c1, c2);
+  document.getElementById("headToHead").innerHTML = h2h;
+}
+
+function buildHeadToHead(c1, c2) {
+  const p1 = c1.profile, p2 = c2.profile;
+  const winner = p1.health.overall >= p2.health.overall ? c1 : c2;
+  const loser  = winner === c1 ? c2 : c1;
+  const pw = winner.profile, pl = loser.profile;
+
+  const growthWinner = p1.avg_rev_growth >= p2.avg_rev_growth ? c1 : c2;
+  const marginWinner = p1.profit_margin  >= p2.profit_margin  ? c1 : c2;
+
+  return `
+    <p style="margin-bottom:10px">
+      <strong>${winner.ticker}</strong> leads on overall health 
+      (${pw.health.overall}/100 vs ${pl.health.overall}/100), 
+      driven by stronger ${pw.health.profitability > pl.health.profitability ? "profitability" : "stability"}.
+    </p>
+    <p style="margin-bottom:10px">
+      <strong>${growthWinner.ticker}</strong> is the higher-growth company 
+      (${pct(growthWinner.profile.avg_rev_growth)} avg revenue growth vs ${pct((growthWinner === c1 ? c2 : c1).profile.avg_rev_growth)}),
+      while <strong>${marginWinner.ticker}</strong> runs on better margins 
+      (${pct(marginWinner.profile.profit_margin)} vs ${pct((marginWinner === c1 ? c2 : c1).profile.profit_margin)}).
+    </p>
+    <p>
+      The AI advisor recommends <strong>${c1.simulation.recommended.toUpperCase()}</strong> for ${c1.ticker} 
+      and <strong>${c2.simulation.recommended.toUpperCase()}</strong> for ${c2.ticker} — 
+      ${c1.simulation.recommended === c2.simulation.recommended
+        ? "the same approach, though the rationale differs based on each company's financial profile."
+        : "different strategies reflecting their distinct financial positions and risk profiles."}
+    </p>
+  `;
+}
+</script>
+</body>
+</html>

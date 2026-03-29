@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analysis Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    .page-header { padding: 28px 0 20px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .page-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+    .page-header p  { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+    .section { margin-bottom: 20px; }
+
+    /* ── Loading overlay ── */
+    .loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(248,248,246,0.97);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 200;
+    }
+    .loading-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+    .loading-steps { display: flex; flex-direction: column; gap: 8px; min-width: 320px; }
+    .loading-step {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--muted); padding: 8px 12px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .loading-step.done   { color: var(--green); border-color: var(--green); background: var(--green-bg); }
+    .loading-step.active { color: var(--blue);  border-color: var(--blue);  background: var(--blue-bg); }
+    .spin {
+      width: 14px; height: 14px; border: 2px solid var(--blue);
+      border-top-color: transparent; border-radius: 50%;
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Pipeline trace log ── */
+    .trace-log {
+      margin-top: 20px; min-width: 320px; max-width: 480px;
+      background: #1a1a18; border-radius: var(--radius-sm);
+      padding: 12px 14px; max-height: 160px; overflow-y: auto;
+    }
+    .trace-line {
+      font-family: monospace; font-size: 11px;
+      color: #9effa0; line-height: 1.8;
+      opacity: 0; animation: fadeIn .3s forwards;
+    }
+    .trace-line.warn { color: #ffd080; }
+    .trace-line.info { color: #80c8ff; }
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    /* ── Chat suggested buttons ── */
+    .chat-suggested { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .suggest-btn {
+      font-size: 12px; padding: 5px 12px; border-radius: 99px;
+      border: 1px solid var(--border); background: var(--surface);
+      cursor: pointer; color: var(--muted); transition: all .15s;
+    }
+    .suggest-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Sensitivity sliders ── */
+    .sensitivity-grid { display: flex; flex-direction: column; gap: 16px; }
+    .slider-row { display: flex; flex-direction: column; gap: 4px; }
+    .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+    .slider-val { font-weight: 600; color: var(--text); min-width: 40px; text-align: right; }
+    input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+    /* ── AI advisor cards ── */
+    .advisor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .advisor-card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .advisor-card-icon { font-size: 16px; margin-bottom: 6px; }
+    .advisor-card-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+    }
+    .advisor-card-text { font-size: 12px; line-height: 1.65; color: var(--text); }
+
+    /* ── Final recommendation highlight ── */
+    .rec-highlight {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 20px; margin-bottom: 14px;
+    }
+    .rec-highlight-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+    }
+    .rec-highlight-decision { font-size: 15px; font-weight: 600; margin-bottom: 10px; line-height: 1.5; }
+    .rec-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    /* ── Sensitivity AI re-eval box ── */
+    .sensitivity-advice {
+      background: var(--blue-bg); border: 1px solid var(--blue);
+      border-radius: var(--radius-sm); padding: 12px 16px;
+      font-size: 13px; line-height: 1.6; margin-top: 12px;
+    }
+    .sensitivity-advice-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--blue); margin-bottom: 6px;
+    }
+
+    canvas { max-height: 260px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Loading overlay with pipeline trace ── -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-title" id="loadingTitle">Running pipeline...</div>
+  <div class="loading-steps" id="loadingSteps">
+    <div class="loading-step active" id="ls-fetch">
+      <div class="spin"></div> Fetching financial data
+    </div>
+    <div class="loading-step" id="ls-profile">
+      <div style="width:14px"></div> Building company profile
+    </div>
+    <div class="loading-step" id="ls-model">
+      <div style="width:14px"></div> Running financial model
+    </div>
+    <div class="loading-step" id="ls-sim">
+      <div style="width:14px"></div> Simulating funding scenarios
+    </div>
+    <div class="loading-step" id="ls-ai">
+      <div style="width:14px"></div> AI advisor reasoning (4 steps)
+    </div>
+    <div class="loading-step" id="ls-rag">
+      <div style="width:14px"></div> Building knowledge index
+    </div>
+  </div>
+  <!-- Live trace log -->
+  <div class="trace-log" id="traceLog"></div>
+</div>
+
+<!-- ── Nav ── -->
+<nav>
+  <div class="container inner">
+    <a class="nav-brand" href="index.html">← Corporate Finance Autopilot</a>
+    <span class="nav-sub" id="navSub"></span>
+  </div>
+</nav>
+
+<!-- ── Main dashboard (hidden until loaded) ── -->
+<div class="container" id="mainContent" style="display:none; padding-bottom: 48px;">
+
+  <!-- Header -->
+  <div class="page-header">
+    <h1 id="companyTitle"></h1>
+    <p id="companyMeta"></p>
+  </div>
+
+  <!-- Metrics row -->
+  <div class="section metrics-row" id="metricsRow"></div>
+
+  <!-- Health + Risk side by side -->
+  <div class="section grid-2 mt-16">
+    <div class="card">
+      <div class="card-title">Company health</div>
+      <div id="healthBars"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Risk flags</div>
+      <div id="riskFlags"></div>
+      <div style="margin-top:16px">
+        <div class="card-title">Key ratios</div>
+        <div id="keyRatios"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat — HIGH UP so it's seen immediately -->
+  <div class="section card mt-16">
+    <div class="card-title">Ask about this company</div>
+    <div class="chat-suggested" id="chatSuggested">
+      <button class="suggest-btn" onclick="askSuggested(this)">Why this funding recommendation?</button>
+      <button class="suggest-btn" onclick="askSuggested(this)">What are the biggest risks?</button>
+      <button class="suggest-btn" onclick="askSuggested(this)">How strong is the balance sheet?</button>
+      <button class="suggest-btn" onclick="askSuggested(this)">What is the confidence level?</button>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chatInput"
+             placeholder="Ask anything about this company's financials..."
+             onkeydown="if(event.key==='Enter') sendChat()"/>
+      <button class="btn btn-primary" onclick="sendChat()">Ask →</button>
+    </div>
+  </div>
+
+  <!-- Revenue projection charts -->
+  <div class="section card mt-16">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('revenue')">Revenue projection</div>
+      <div class="tab" onclick="switchTab('income')">Net income</div>
+      <div class="tab" onclick="switchTab('scenarios')">Scenario comparison</div>
+    </div>
+    <div class="tab-panel active" id="tab-revenue"><canvas id="chartRevenue"></canvas></div>
+    <div class="tab-panel" id="tab-income"><canvas id="chartIncome"></canvas></div>
+    <div class="tab-panel" id="tab-scenarios"><canvas id="chartScenarios"></canvas></div>
+  </div>
+
+  <!-- Sensitivity sliders -->
+  <div class="section card mt-16">
+    <div class="card-title">Sensitivity analysis — adjust assumptions</div>
+    <div class="sensitivity-grid">
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Base revenue growth rate</span>
+          <span class="slider-val" id="val-growth">—</span>
+        </div>
+        <input type="range" id="sl-growth" min="-20" max="60" step="1" oninput="onSlider()"/>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Margin adjustment</span>
+          <span class="slider-val" id="val-margin">—</span>
+        </div>
+        <input type="range" id="sl-margin" min="-20" max="20" step="1" oninput="onSlider()"/>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Upside premium</span>
+          <span class="slider-val" id="val-upside">—</span>
+        </div>
+        <input type="range" id="sl-upside" min="0" max="20" step="1" oninput="onSlider()"/>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <canvas id="chartSensitivity" style="max-height:220px"></canvas>
+    </div>
+    <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+      <button class="btn" onclick="rerunAI()" id="rerunBtn">Re-evaluate with AI →</button>
+    </div>
+    <div id="sensitivityAdvice" style="display:none" class="sensitivity-advice">
+      <div class="sensitivity-advice-label">AI re-evaluation</div>
+      <div id="sensitivityAdviceText"></div>
+    </div>
+  </div>
+
+  <!-- Funding simulation -->
+  <div class="section mt-16">
+    <div class="card-title" style="margin-bottom:12px">Funding simulation</div>
+    <div class="funding-grid" id="fundingGrid"></div>
+  </div>
+
+  <!-- AI Advisor — visual cards, NOT a wall of text -->
+  <div class="section card mt-16">
+    <div class="card-title">AI advisor — 4-step reasoning</div>
+    <div id="advisorSteps"></div>
+    <div class="disclaimer" id="disclaimer"></div>
+  </div>
+
+</div><!-- end mainContent -->
+
+<script src="charts.js"></script>
+<script src="chat.js"></script>
+<script>
+const ticker = new URLSearchParams(window.location.search).get("ticker") || "AAPL";
+let globalData = null;
+let sensitivityChart = null;
+
+// ── Pipeline loading steps ────────────────────────────────────────────────
+const STEPS = ["ls-fetch","ls-profile","ls-model","ls-sim","ls-ai","ls-rag"];
+let currentStep = 0;
+
+function advanceStep() {
+  if (currentStep > 0) {
+    const prev = document.getElementById(STEPS[currentStep - 1]);
+    if (prev) {
+      prev.classList.remove("active");
+      prev.classList.add("done");
+      const icon = prev.querySelector(".spin, div[style]");
+      if (icon) icon.outerHTML = "<span>✓</span>";
+    }
+  }
+  if (currentStep < STEPS.length) {
+    const cur = document.getElementById(STEPS[currentStep]);
+    if (cur) {
+      cur.classList.add("active");
+      const icon = cur.querySelector("div");
+      if (icon) icon.outerHTML = '<div class="spin"></div>';
+    }
+  }
+  currentStep++;
+}
+
+// ── Live trace log ────────────────────────────────────────────────────────
+const TRACE_LINES = [
+  { text: `[Ingestion] Fetching financials for ${ticker}...`, cls: "info", delay: 400 },
+  { text: `[Ingestion] ✓ ${ticker} — market cap fetched`, cls: "", delay: 1200 },
+  { text: `[Wiki] Fetching company context...`, cls: "info", delay: 2000 },
+  { text: `[Wiki] ✓ description fetched`, cls: "", delay: 2800 },
+  { text: `[Profile] Computing growth, margins, risk flags...`, cls: "info", delay: 4000 },
+  { text: `[Model] Building Base / Upside / Downside scenarios...`, cls: "info", delay: 6000 },
+  { text: `[Simulator] Scoring equity, debt, buyback options...`, cls: "info", delay: 8000 },
+  { text: `[Advisor] Step 1/4 — Analysing company health...`, cls: "warn", delay: 10000 },
+  { text: `[Advisor] Step 2/4 — Evaluating risks...`, cls: "warn", delay: 13000 },
+  { text: `[Advisor] Step 3/4 — Interpreting simulation...`, cls: "warn", delay: 16000 },
+  { text: `[Advisor] Step 4/4 — Generating final recommendation...`, cls: "warn", delay: 19000 },
+  { text: `[Indexer] Building FAISS knowledge index...`, cls: "info", delay: 22000 },
+  { text: `[Pipeline] ✓ Complete`, cls: "", delay: 24000 },
+];
+
+function startTraceLog() {
+  const log = document.getElementById("traceLog");
+  TRACE_LINES.forEach(({ text, cls, delay }) => {
+    setTimeout(() => {
+      const line = document.createElement("div");
+      line.className = `trace-line ${cls}`;
+      line.textContent = text;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }, delay);
+  });
+}
+
+// ── Main fetch ────────────────────────────────────────────────────────────
+async function runAnalysis() {
+  document.getElementById("navSub").textContent = ticker;
+  document.getElementById("loadingTitle").textContent = `Analysing ${ticker}...`;
+
+  startTraceLog();
+  advanceStep();
+
+  const stepInterval = setInterval(() => {
+    if (currentStep < STEPS.length) advanceStep();
+  }, 3800);
+
+  try {
+    const res = await fetch(`/analyse/${ticker}`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    globalData = data;
+
+    clearInterval(stepInterval);
+    while (currentStep <= STEPS.length) advanceStep();
+
+    await new Promise(r => setTimeout(r, 700));
+    document.getElementById("loadingOverlay").style.display = "none";
+    document.getElementById("mainContent").style.display = "block";
+
+    renderAll(data);
+  } catch (err) {
+    clearInterval(stepInterval);
+    document.getElementById("loadingTitle").textContent = `Error: ${err.message}`;
+  }
+}
+
+// ── Formatters ────────────────────────────────────────────────────────────
+function fmt(n) {
+  if (!n && n !== 0) return "N/A";
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `$${(n/1e12).toFixed(1)}T`;
+  if (abs >= 1e9)  return `$${(n/1e9).toFixed(1)}B`;
+  if (abs >= 1e6)  return `$${(n/1e6).toFixed(1)}M`;
+  return `$${n.toLocaleString()}`;
+}
+function pct(n) { return n != null ? `${(n*100).toFixed(1)}%` : "N/A"; }
+function healthColor(s) {
+  if (s >= 75) return "#16a34a";
+  if (s >= 50) return "#d97706";
+  return "#dc2626";
+}
+
+// ── Render all sections ───────────────────────────────────────────────────
+function renderAll(data) {
+  const { profile, model, simulation, advice } = data;
+  const p = profile;
+
+  // Page title + header
+  document.title = `${ticker} — Corporate Finance Autopilot`;
+  document.getElementById("companyTitle").textContent = `${ticker} — ${data.name}`;
+  document.getElementById("companyMeta").textContent =
+    `${p.sector} · ${p.industry} · ${p.country} · ${p.description}`;
+
+  // ── Metrics ──
+  const rev = p.revenue;
+  const latestRev = rev[rev.length - 1];
+  const prevRev   = rev[rev.length - 2];
+  const revGrowth = prevRev ? ((latestRev - prevRev) / prevRev * 100).toFixed(1) : null;
+
+  document.getElementById("metricsRow").innerHTML = [
+    { label: "Market cap",    value: fmt(p.market_cap),    sub: p.sector },
+    { label: "Revenue (TTM)", value: fmt(latestRev), sub: revGrowth ? `${revGrowth > 0 ? "+" : ""}${revGrowth}% YoY · ${p.rev_direction || ''}` : "" },
+    { label: "Net margin",    value: pct(p.profit_margin), sub: p.profit_margin > 0.15 ? "Strong" : p.profit_margin > 0 ? "Moderate" : "Loss-making" },
+    { label: "Health score",  value: `${p.health.overall}/100`, sub: p.health.overall >= 70 ? "Good" : p.health.overall >= 50 ? "Fair" : "Weak" },
+  ].map(m => `
+    <div class="metric">
+      <div class="metric-label">${m.label}</div>
+      <div class="metric-value">${m.value}</div>
+      <div class="metric-sub">${m.sub}</div>
+    </div>
+  `).join("");
+
+  // ── Health bars ──
+  const hKeys = ["overall","profitability","growth","stability","leverage"];
+  const anomaly = p.anomaly || {};
+  const comp    = anomaly.peer_comparison || {};
+
+  document.getElementById("healthBars").innerHTML = hKeys.map(k => `
+    <div class="health-row">
+      <div class="health-label">${k.charAt(0).toUpperCase()+k.slice(1)}</div>
+      <div class="health-track">
+        <div class="health-fill" style="width:${p.health[k]}%;background:${healthColor(p.health[k])}"></div>
+      </div>
+      <div class="health-score">${p.health[k]}</div>
+    </div>
+  `).join("") + `
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">
+        ML peer analysis · Isolation Forest
+      </div>
+      <div style="font-size:12px;margin-bottom:8px">
+        <span class="badge ${anomaly.is_outlier ? 'badge-amber' : 'badge-green'}" style="margin-right:6px">
+          ${anomaly.is_outlier ? 'Outlier detected' : 'Within peer range'}
+        </span>
+        ${anomaly.peer_position || 'run more companies to compare'}
+      </div>
+      ${comp.profit_margin ? `
+      <div style="font-size:11px;color:var(--muted);line-height:2">
+        <div>Margin vs peer avg:
+          <strong style="color:${comp.profit_margin.better ? 'var(--green)' : 'var(--red)'}">
+            ${comp.profit_margin.diff > 0 ? '+' : ''}${(comp.profit_margin.diff*100).toFixed(1)}%
+          </strong>
+        </div>
+        <div>Growth vs peer avg:
+          <strong style="color:${comp.avg_rev_growth.better ? 'var(--green)' : 'var(--red)'}">
+            ${comp.avg_rev_growth.diff > 0 ? '+' : ''}${(comp.avg_rev_growth.diff*100).toFixed(1)}%
+          </strong>
+        </div>
+        <div style="color:var(--muted);font-size:10px;margin-top:4px">
+          Growth trend: ${p.rev_direction || 'stable'} · R²=${p.rev_r2 ? p.rev_r2.toFixed(2) : 'N/A'}
+        </div>
+      </div>` : `
+      <div style="font-size:11px;color:var(--muted)">
+        Run 2+ companies to see peer comparison
+      </div>`}
+    </div>
+  `;
+
+  // ── Risk flags ──
+  const flags = p.risk_flags;
+  document.getElementById("riskFlags").innerHTML = flags.length
+    ? flags.map(f => `<span class="badge badge-amber" style="margin:2px">${f}</span>`).join("")
+    : `<span class="badge badge-green">No flags identified</span>`;
+
+  // ── Key ratios ──
+  document.getElementById("keyRatios").innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
+      <div style="color:var(--muted)">P/E ratio</div><div>${p.pe_ratio ? p.pe_ratio.toFixed(1) : "N/A"}</div>
+      <div style="color:var(--muted)">Beta</div><div>${p.beta ? p.beta.toFixed(2) : "N/A"}</div>
+      <div style="color:var(--muted)">Cash</div><div>${fmt(p.cash)}</div>
+      <div style="color:var(--muted)">Total debt</div><div>${fmt(p.debt)}</div>
+      <div style="color:var(--muted)">Avg rev growth</div><div>${pct(p.avg_rev_growth)}</div>
+      <div style="color:var(--muted)">FCF margin</div><div>${pct(p.fcf_margin)}</div>
+    </div>
+  `;
+
+  // ── Charts ──
+  buildCharts(model, p);
+
+  // ── Sensitivity sliders ──
+  initSliders(model, profile);
+
+  // ── Funding simulation ──
+  const sim = simulation;
+  const order = ["equity","debt","buyback"];
+  document.getElementById("fundingGrid").innerHTML = order.map(key => {
+    const opt   = sim.options[key];
+    const isRec = sim.recommended === key;
+    const pros  = opt.pros.map(x => `<div>+ ${x}</div>`).join("");
+    const cons  = opt.cons.map(x => `<div style="color:var(--red)">− ${x}</div>`).join("");
+    return `
+      <div class="funding-card ${isRec ? "recommended" : ""}">
+        ${isRec ? '<div class="rec-badge">RECOMMENDED</div>' : ""}
+        <div class="funding-score" style="color:${healthColor(opt.score)}">
+          ${opt.score}<span style="font-size:14px;font-weight:400;color:var(--muted)">/100</span>
+        </div>
+        <div class="funding-label">${opt.label}</div>
+        <div class="funding-pros-cons">${pros}${cons}</div>
+      </div>
+    `;
+  }).join("");
+
+  // ── AI Advisor — visual card grid ──
+  const steps = advice.steps;
+  const finalText = steps.final_recommendation || "";
+
+  // Parse structured sections from the final recommendation
+  const getSection = (label, next) => {
+    const re = new RegExp(`${label}:(.*?)(?=${next}|$)`, "s");
+    return (finalText.match(re) || [])[1]?.trim() || "";
+  };
+  const recDecision  = getSection("RECOMMENDATION", "RATIONALE");
+  const recRationale = getSection("RATIONALE", "CONDITIONS");
+  const recConditions= getSection("CONDITIONS", "WHAT TO WATCH");
+  const recWatch     = getSection("WHAT TO WATCH", "XXXXEND");
+
+  const confColor = advice.confidence === "high" ? "badge-green"
+    : (advice.confidence || "").includes("medium") ? "badge-blue" : "badge-amber";
+
+  document.getElementById("advisorSteps").innerHTML = `
+    <!-- Final recommendation highlighted at top -->
+    <div class="rec-highlight">
+      <div class="rec-highlight-label">Final recommendation</div>
+      <div class="rec-highlight-decision">${recDecision || finalText.slice(0, 140) + "..."}</div>
+      <div class="rec-tags">
+        <span class="badge badge-green">${sim.recommended.toUpperCase()} recommended</span>
+        <span class="badge ${confColor}">${advice.confidence || "medium"} confidence</span>
+      </div>
+    </div>
+
+    <!-- 4 cards for the steps -->
+    <div class="advisor-grid">
+      <div class="advisor-card">
+        <div class="advisor-card-icon">◎</div>
+        <div class="advisor-card-label">Step 1 — Health analysis</div>
+        <div class="advisor-card-text">${steps.health_analysis || ""}</div>
+      </div>
+      <div class="advisor-card">
+        <div class="advisor-card-icon">⚠</div>
+        <div class="advisor-card-label">Step 2 — Risk evaluation</div>
+        <div class="advisor-card-text">${steps.risk_evaluation || ""}</div>
+      </div>
+      <div class="advisor-card">
+        <div class="advisor-card-icon">◈</div>
+        <div class="advisor-card-label">Step 3 — Simulation</div>
+        <div class="advisor-card-text">${steps.simulation_interpretation || ""}</div>
+      </div>
+      <div class="advisor-card">
+        <div class="advisor-card-icon">✦</div>
+        <div class="advisor-card-label">What to watch</div>
+        <div class="advisor-card-text">${recWatch || recConditions || ""}</div>
+      </div>
+    </div>
+
+    ${recRationale ? `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;font-size:12px;line-height:1.7;color:var(--muted)">
+      <strong style="color:var(--text);font-size:11px;text-transform:uppercase;letter-spacing:0.05em">Rationale</strong><br>
+      ${recRationale}
+    </div>` : ""}
+  `;
+
+  document.getElementById("disclaimer").textContent = advice.disclaimer;
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach((t, i) => {
+    t.classList.toggle("active", ["revenue","income","scenarios"][i] === name);
+  });
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.getElementById(`tab-${name}`).classList.add("active");
+}
+
+// ── Sensitivity sliders ───────────────────────────────────────────────────
+function initSliders(model, profile) {
+  const baseG   = Math.round(model.assumptions.base_growth * 100);
+  const upsideP = Math.round((model.assumptions.upside_growth - model.assumptions.base_growth) * 100);
+
+  document.getElementById("sl-growth").value = baseG;
+  document.getElementById("sl-margin").value = 0;
+  document.getElementById("sl-upside").value = Math.min(upsideP, 20);
+
+  updateSliderLabels();
+  buildSensitivityChart(model, profile);
+}
+
+function updateSliderLabels() {
+  const g = document.getElementById("sl-growth").value;
+  const m = document.getElementById("sl-margin").value;
+  const u = document.getElementById("sl-upside").value;
+  document.getElementById("val-growth").textContent = `${g}%`;
+  document.getElementById("val-margin").textContent = `${m > 0 ? "+" : ""}${m}%`;
+  document.getElementById("val-upside").textContent = `+${u}%`;
+}
+
+function onSlider() {
+  updateSliderLabels();
+  if (!globalData) return;
+  buildSensitivityChart(globalData.model, globalData.profile);
+  document.getElementById("sensitivityAdvice").style.display = "none";
+}
+
+function buildSensitivityChart(model, profile) {
+  const baseRev = profile.revenue[profile.revenue.length - 1];
+  const baseG   = parseFloat(document.getElementById("sl-growth").value) / 100;
+  const upsideP = parseFloat(document.getElementById("sl-upside").value) / 100;
+  const years   = model.projection_years;
+  const n       = years.length;
+
+  function project(start, g, steps) {
+    let v = start, out = [];
+    for (let i = 0; i < steps; i++) { v = v * (1 + g); out.push(Math.round(v)); }
+    return out;
+  }
+
+  const base     = project(baseRev, baseG, n);
+  const upside   = project(baseRev, Math.min(baseG + upsideP, 0.6), n);
+  const downside = project(baseRev, Math.max(baseG * 0.5, -0.15), n);
+
+  const BLUE = "#2563eb", GREEN = "#16a34a", RED = "#dc2626", GRID = "#e5e4e0";
+
+  if (sensitivityChart) { sensitivityChart.destroy(); sensitivityChart = null; }
+
+  sensitivityChart = new Chart(
+    document.getElementById("chartSensitivity"),
+    {
+      type: "line",
+      data: {
+        labels: years,
+        datasets: [
+          { label: "Base",     data: base,     borderColor: BLUE,  backgroundColor: BLUE+"18", fill: true, borderWidth: 2, pointRadius: 3, tension: 0.3 },
+          { label: "Upside",   data: upside,   borderColor: GREEN, backgroundColor: "transparent", borderWidth: 1.5, borderDash: [5,3], pointRadius: 2, tension: 0.3 },
+          { label: "Downside", data: downside, borderColor: RED,   backgroundColor: "transparent", borderWidth: 1.5, borderDash: [5,3], pointRadius: 2, tension: 0.3 },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        layout: { padding: 10 },
+        plugins: {
+          legend: { position: "top", labels: { font: { size: 12 }, boxWidth: 14 } },
+          tooltip: { callbacks: { label: ctx => `$${(ctx.raw/1e9).toFixed(1)}B` } }
+        },
+        scales: {
+          x: { grid: { color: GRID }, ticks: { font: { size: 11 } } },
+          y: { grid: { color: GRID }, ticks: { font: { size: 11 }, callback: v => `$${(v/1e9).toFixed(0)}B` } }
+        }
+      }
+    }
+  );
+}
+
+async function rerunAI() {
+  if (!globalData) return;
+  const btn = document.getElementById("rerunBtn");
+  btn.disabled = true;
+  btn.textContent = "Re-evaluating...";
+
+  const baseG    = parseFloat(document.getElementById("sl-growth").value);
+  const marginAdj= parseFloat(document.getElementById("sl-margin").value);
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ticker,
+        question: `If ${ticker}'s base revenue growth is ${baseG}% per year and profit margin changes by ${marginAdj > 0 ? "+" : ""}${marginAdj}%, how does this change the funding recommendation and overall financial outlook? Be concise and specific.`
+      })
+    });
+    const data = await res.json();
+    const box = document.getElementById("sensitivityAdvice");
+    document.getElementById("sensitivityAdviceText").textContent = data.answer || "No response.";
+    box.style.display = "block";
+  } catch(e) {
+    console.error(e);
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Re-evaluate with AI →";
+}
+
+// ── Suggested chat questions ──────────────────────────────────────────────
+function askSuggested(btn) {
+  document.getElementById("chatInput").value = btn.textContent;
+  document.getElementById("chatSuggested").style.display = "none";
+  sendChat();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+runAnalysis();
+</script>
+</body>
+</html>
