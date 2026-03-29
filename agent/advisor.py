@@ -15,10 +15,9 @@ async def run_advisor(profile: dict, model: dict, simulation: dict) -> dict:
     ticker = profile["ticker"]
     print(f"\n[Advisor] Starting 4-step reasoning for {ticker}...")
 
-    # Build a compact financial snapshot to pass into each prompt
     snapshot = _build_snapshot(profile, model, simulation)
 
-    # ── Step 1: Health analysis ───────────────────────────────────────────
+    # Health analysis
     print(f"[Advisor] Step 1/4 — Analysing company health...")
     health_analysis = _call_groq(
         system="You are a senior equity analyst. Be concise, specific, and grounded in the numbers provided. No generic statements.",
@@ -34,7 +33,7 @@ Write 3-4 sentences covering:
 Be specific to these numbers, not generic."""
     )
 
-    # ── Step 2: Risk evaluation ───────────────────────────────────────────
+    # Risk evaluation 
     print(f"[Advisor] Step 2/4 — Evaluating risks...")
     risk_evaluation = _call_groq(
         system="You are a credit risk analyst. Be direct and specific. Reference actual figures.",
@@ -51,7 +50,7 @@ Write 2-3 sentences on:
 - One specific scenario where things go wrong"""
     )
 
-    # ── Step 3: Simulation interpretation ────────────────────────────────
+    # Simulation interpretation
     print(f"[Advisor] Step 3/4 — Interpreting funding simulation...")
     sim_scores = simulation["scores"]
     recommended = simulation["recommended"]
@@ -73,7 +72,7 @@ Write 3-4 sentences explaining:
 - Any important caveats or conditions on the recommendation"""
     )
 
-    # ── Step 4: Final recommendation ─────────────────────────────────────
+    # Final recommendation
     print(f"[Advisor] Step 4/4 — Generating final recommendation...")
     final_recommendation = _call_groq(
         system="You are a chief financial advisor delivering a board-level recommendation. Be decisive, specific, and structured.",
@@ -120,7 +119,7 @@ def _call_groq(system: str, user: str) -> str:
                 {"role": "system",  "content": system},
                 {"role": "user",    "content": user},
             ],
-            temperature=0.3,   # low temp = more consistent, analytical tone
+            temperature=0.3,
             max_tokens=400,
         )
         return response.choices[0].message.content.strip()

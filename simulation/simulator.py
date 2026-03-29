@@ -19,26 +19,24 @@ def simulate_funding(profile: dict, model: dict) -> dict:
     health          = profile["health"]["overall"]
     base_revenue_y5 = model["scenarios"]["base"]["revenue"][-1]
 
-    # Assume annual operating cash burn ~ net income if negative, else 0
     annual_burn     = max(-latest_income, 0)
     runway_months   = (cash / (annual_burn / 12)) if annual_burn > 0 else 999
 
-    # Funding amount = 10% of market cap, capped at $10B, floored at $100M
     funding_amount  = max(100e6, min(market_cap * 0.10, 10e9))
 
-    # ── OPTION 1: Equity raise ──────────────────────────────────────────
+    # OPTION 1: Equity raise
     dilution_pct        = funding_amount / market_cap
-    equity_growth_boost = 0.03   # assume deployment adds ~3% to growth
+    equity_growth_boost = 0.03   
     equity_upside_rev   = base_revenue_y5 * (1 + equity_growth_boost)
 
     equity_score = 50
-    if dilution_pct < 0.05:   equity_score += 20   # low dilution
-    if profit_margin > 0.15:  equity_score -= 10   # profitable co shouldn't dilute
-    if avg_rev_growth > 0.10: equity_score += 20   # high growth justifies equity
+    if dilution_pct < 0.05:   equity_score += 20   
+    if profit_margin > 0.15:  equity_score -= 10  
+    if avg_rev_growth > 0.10: equity_score += 20   
     if health >= 70:          equity_score += 10
     equity_score = max(0, min(100, equity_score))
 
-    # ── OPTION 2: Debt raise ────────────────────────────────────────────
+    # OPTION 2: Debt raise 
     interest_rate       = 0.055  # ~5.5% corporate bond rate
     annual_interest     = funding_amount * interest_rate
     interest_coverage   = latest_income / annual_interest if annual_interest else 999
@@ -47,26 +45,25 @@ def simulate_funding(profile: dict, model: dict) -> dict:
     debt_upside_rev     = base_revenue_y5 * (1 + debt_growth_boost)
 
     debt_score = 50
-    if interest_coverage > 5:   debt_score += 25   # easily covers interest
-    if interest_coverage > 10:  debt_score += 10   # very comfortably covered
-    if new_debt_ratio < 0.5:    debt_score += 15   # low resulting leverage
-    if profit_margin < 0.05:    debt_score -= 20   # thin margins can't service debt
-    if avg_rev_growth < 0:      debt_score -= 15   # declining revenue is dangerous
+    if interest_coverage > 5:   debt_score += 25   
+    if interest_coverage > 10:  debt_score += 10   
+    if new_debt_ratio < 0.5:    debt_score += 15   
+    if profit_margin < 0.05:    debt_score -= 20   
+    if avg_rev_growth < 0:      debt_score -= 15   
     debt_score = max(0, min(100, debt_score))
 
-    # ── OPTION 3: Buyback / retain ──────────────────────────────────────
-    # Only makes sense if profitable and cash-rich
-    buyback_yield   = (funding_amount / market_cap) * 100  # % of market cap retired
+    # OPTION 3: Buyback / retain
+    buyback_yield   = (funding_amount / market_cap) * 100  
     buyback_score   = 50
     if profit_margin > 0.20:  buyback_score += 25
     if cash > debt:           buyback_score += 20
-    if avg_rev_growth < 0.05: buyback_score += 10   # slow growth = return cash
-    if avg_rev_growth > 0.10: buyback_score -= 20   # any meaningful growth = deploy capital
-    if avg_rev_growth > 0.20: buyback_score -= 15   # high growth = deploy capital
-    if health < 60:           buyback_score -= 20   # unhealthy co shouldn't buyback
+    if avg_rev_growth < 0.05: buyback_score += 10  
+    if avg_rev_growth > 0.10: buyback_score -= 20   
+    if avg_rev_growth > 0.20: buyback_score -= 15  
+    if health < 60:           buyback_score -= 20  
     buyback_score = max(0, min(100, buyback_score))
 
-    # ── Recommended option ──────────────────────────────────────────────
+    # Recommended option
     scores = {
         "equity":  equity_score,
         "debt":    debt_score,
@@ -120,9 +117,6 @@ def simulate_funding(profile: dict, model: dict) -> dict:
     print(f"[Simulator]   Recommended: {recommended.upper()}")
 
     return simulation
-
-
-# ── Helper functions for human-readable pros/cons ───────────────────────────
 
 def _equity_pros(dilution, growth):
     pros = ["No interest payments", "Strengthens balance sheet"]

@@ -3,11 +3,6 @@ from config import MODEL_ASSUMPTIONS
 
 
 def build_model(profile: dict) -> dict:
-    """
-    Build Base, Upside, and Downside revenue projections
-    using historical growth rates as the anchor.
-    All assumptions are explicit and configurable in config.py.
-    """
     ticker = profile.get("ticker", "")
     print(f"[Model] Building financial model for {ticker}...")
 
@@ -17,15 +12,15 @@ def build_model(profile: dict) -> dict:
     hist_growth  = profile["avg_rev_growth"]
     hist_margin  = profile["profit_margin"]
 
-    # --- Growth rate per scenario ---
+    # Growth rate per scenario
     base_growth     = min(hist_growth + assumptions["base_growth_premium"], 0.50)
     upside_growth   = min(hist_growth + assumptions["upside_growth_premium"], 0.60)
     downside_growth = max(hist_growth * assumptions["downside_growth_cut"], -0.15)
 
-    # Floor: don't let downside go below -15%
+    # Floor
     downside_growth = max(downside_growth, -0.15)
 
-    # Ceiling: cap upside at 60% — keeps projections credible
+    # Ceiling
     upside_growth   = min(upside_growth, 0.60)
 
     def project(start, growth_rate, n_years):
@@ -40,13 +35,12 @@ def build_model(profile: dict) -> dict:
     upside_revenue   = project(base_rev, upside_growth,   years)
     downside_revenue = project(base_rev, downside_growth, years)
 
-    # --- Net income projections (apply same margin assumption) ---
-    # Upside: margin improves slightly, downside: margin compresses
+    # Net income projections
     base_income     = [round(r * hist_margin,         2) for r in base_revenue]
     upside_income   = [round(r * (hist_margin + 0.03), 2) for r in upside_revenue]
     downside_income = [round(r * (hist_margin - 0.03), 2) for r in downside_revenue]
 
-    # --- Projection year labels ---
+    # Projection year labels
     last_hist_year  = int(profile["revenue_dates"][-1]) if profile.get("revenue_dates") else 2024
     proj_years      = [str(last_hist_year + i + 1) for i in range(years)]
 

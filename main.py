@@ -25,22 +25,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory cache — one entry per ticker
+# In-memory cache 
 cache: dict = {}
 
 
-# ── Models ───────────────────────────────────────────────────────────────────
-
+# Models
 class ChatRequest(BaseModel):
     ticker: str
     question: str
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
+# Routes 
 
 @app.get("/companies")
 def get_companies():
-    """Return the preset company list for the frontend picker."""
     return {"companies": [
         {"ticker": k, "name": v} for k, v in COMPANIES.items()
     ]}
@@ -48,10 +46,6 @@ def get_companies():
 
 @app.post("/analyse/{ticker}")
 async def analyse(ticker: str):
-    """
-    Run the full pipeline for a ticker.
-    Stores result in cache. Returns summary + full result.
-    """
     ticker = ticker.upper()
     if ticker not in COMPANIES:
         raise HTTPException(status_code=404, detail=f"{ticker} not in preset list")
@@ -61,27 +55,26 @@ async def analyse(ticker: str):
     print(f"{'='*50}")
 
     try:
-        # ① Ingestion
+        # Ingestion
         financials = fetch_financials(ticker)
         if "error" in financials:
             raise HTTPException(status_code=502, detail=f"Data fetch failed: {financials['error']}")
         wiki = fetch_company_context(ticker)
 
-        # ② Processing
+        # Processing
         profile = build_profile(financials, wiki)
-
         profile["anomaly"] = score_anomaly(profile, cache)
 
-        # ③ Modeling
+        # Modeling
         model = build_model(profile)
 
-        # ④ Simulation
+        # Simulation
         simulation = simulate_funding(profile, model)
 
-        # ⑤ AI Advisor
+        # AI Advisor
         advice = await run_advisor(profile, model, simulation)
 
-        # ⑥ RAG index
+        # RAG index
         index_data = build_index(profile, model, simulation, advice)
 
         # Store in cache
@@ -174,5 +167,5 @@ async def compare(ticker1: str, ticker2: str):
     results = await asyncio.gather(get_or_run(ticker1), get_or_run(ticker2))
     return {"company1": results[0], "company2": results[1]}
 
-# ── Serve frontend ────────────────────────────────────────────────────────────
+# Serve frontend
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")

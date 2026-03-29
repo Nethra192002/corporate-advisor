@@ -24,7 +24,7 @@ async def query_index(
     ticker   = profile["ticker"]
     contents = [c["content"] for c in index_data]
 
-    # Build FAISS index from semantic embeddings
+    # FAISS index from semantic embeddings
     embeddings = _embed(contents).astype(np.float32)
     dim        = embeddings.shape[1]
     index      = faiss.IndexFlatL2(dim)

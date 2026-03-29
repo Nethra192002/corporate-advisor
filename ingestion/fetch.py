@@ -3,21 +3,17 @@ import yfinance as yf
 
 
 def fetch_financials(ticker: str) -> dict:
-    """
-    Pull real financial data from Yahoo Finance via yfinance.
-    Returns a clean dict with everything the pipeline needs.
-    """
     print(f"[Ingestion] Fetching financials for {ticker}...")
 
     try:
         stock = yf.Ticker(ticker)
 
         info        = stock.info
-        income      = stock.financials          # annual, most recent first
+        income      = stock.financials          
         balance     = stock.balance_sheet
         cashflow    = stock.cashflow
 
-        # --- Revenue (last 4 years, oldest → newest) ---
+        # Revenue (last 4 years)
         if "Total Revenue" in income.index:
             revenue_series = income.loc["Total Revenue"].dropna().sort_index()
             revenue = [float(v) for v in revenue_series.values]
@@ -25,21 +21,21 @@ def fetch_financials(ticker: str) -> dict:
         else:
             revenue, revenue_dates = [], []
 
-        # --- Net income ---
+
         if "Net Income" in income.index:
             net_income_series = income.loc["Net Income"].dropna().sort_index()
             net_income = [float(v) for v in net_income_series.values]
         else:
             net_income = []
 
-        # --- Free cash flow ---
+
         if "Free Cash Flow" in cashflow.index:
             fcf_series = cashflow.loc["Free Cash Flow"].dropna().sort_index()
             free_cash_flow = [float(v) for v in fcf_series.values]
         else:
             free_cash_flow = []
 
-        # --- Balance sheet items ---
+        # Balance sheet items
         def get_balance(label):
             if label in balance.index:
                 val = balance.loc[label].dropna()
@@ -51,7 +47,7 @@ def fetch_financials(ticker: str) -> dict:
         total_assets     = get_balance("Total Assets")
         total_equity     = get_balance("Stockholders Equity")
 
-        # --- Key stats from info ---
+        # Key stats from info
         market_cap    = info.get("marketCap")
         sector        = info.get("sector", "Unknown")
         industry      = info.get("industry", "Unknown")

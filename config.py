@@ -16,9 +16,9 @@ COMPANIES = {
 
 # Financial model assumptions
 MODEL_ASSUMPTIONS = {
-    "base_growth_premium":   0.00,   # historical avg
-    "upside_growth_premium": 0.05,   # +5% on top of historical
-    "downside_growth_cut":   0.50,   # half of historical
+    "base_growth_premium":   0.00,   
+    "upside_growth_premium": 0.05,   
+    "downside_growth_cut":   0.50,   
     "projection_years":      5,
-    "funding_amount_m":      500,    # $500M default simulation
+    "funding_amount_m":      500,    
 }

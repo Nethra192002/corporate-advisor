@@ -4,7 +4,6 @@ from sklearn.linear_model import LinearRegression
 
 
 def _trend_growth(series):
-    """Linear regression on revenue series — more accurate than simple average."""
     if len(series) < 2:
         return 0.0, 0.0, "stable"
     X = np.arange(len(series)).reshape(-1, 1)
@@ -33,7 +32,7 @@ def build_profile(financials: dict, wiki: dict) -> dict:
     market_cap = financials.get("market_cap") or 1
     beta       = financials.get("beta") or 1.0
 
-    # ── ML: linear regression growth trend ──
+    # linear regression growth trend
     avg_rev_growth,    rev_r2,    rev_direction    = _trend_growth(revenue)
     avg_income_growth, income_r2, income_direction = _trend_growth(net_income)
 
@@ -50,7 +49,7 @@ def build_profile(financials: dict, wiki: dict) -> dict:
         if financials.get("total_equity") else None
     )
 
-    # ── Risk flags ──
+    # Risk flags
     risk_flags = []
     if avg_rev_growth < 0:                         risk_flags.append("Declining revenue")
     if profit_margin < 0:                          risk_flags.append("Unprofitable")
@@ -60,7 +59,7 @@ def build_profile(financials: dict, wiki: dict) -> dict:
     if rev_direction == "decelerating":            risk_flags.append("Growth decelerating")
     if fcf_margin < 0:                             risk_flags.append("Negative free cash flow")
 
-    # ── Health scores ──
+    # Health scores
     def clamp(val, lo=0, hi=100):
         return max(lo, min(hi, val))
 
@@ -110,7 +109,7 @@ def build_profile(financials: dict, wiki: dict) -> dict:
             "stability":     stability_score,
             "leverage":      leverage_score,
         },
-        "anomaly": {},  # filled in by main.py after cache check
+        "anomaly": {},
     }
 
     print(f"[Profile] ✓ {ticker} — health: {overall_health}/100, "

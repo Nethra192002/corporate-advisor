@@ -13,10 +13,6 @@ WIKI_TITLES = {
 
 
 def fetch_company_context(ticker: str) -> dict:
-    """
-    Pull company description from Wikipedia's official REST API.
-    No scraping — clean JSON response, explicitly free for any use.
-    """
     print(f"[Wiki] Fetching context for {ticker}...")
 
     title = WIKI_TITLES.get(ticker)
@@ -36,7 +32,7 @@ def fetch_company_context(ticker: str) -> dict:
         description = data.get("extract", "")
         wiki_url    = data.get("content_urls", {}).get("desktop", {}).get("page", "")
 
-        # Trim to first 3 sentences — enough context for the AI, not too noisy
+        # Trim to first 3 sentences
         sentences   = description.split(". ")
         short_desc  = ". ".join(sentences[:3]) + ("." if len(sentences) > 3 else "")
 
