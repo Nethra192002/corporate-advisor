@@ -10,7 +10,7 @@ The core idea is that AI should reason over structured financial outputs, not re
 
 ## Live demo
 
-**https://diarchic-alonzo-agriculturally.ngrok-free.app**
+**https://diarchic-alonzo-agriculturally.ngrok-free.dev**
 
 > This link is active while the demo server is running. If it shows a connection error the server is temporarily offline — use the local setup below. When you open the link you will see an ngrok warning page — click **Visit Site** to proceed.
 
